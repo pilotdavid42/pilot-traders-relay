@@ -33,7 +33,8 @@ wss.on('connection', (ws, req) => {
         ws,
         ip: clientIp,
         connectedAt: new Date(),
-        symbol: null // Can filter by symbol later
+        symbol: null, // Can filter by symbol later
+        ignoreUntil: Date.now() + 5000  // Ignore alerts for first 5 seconds after connect (stale data protection)
     });
 
     console.log(`[${new Date().toISOString()}] Client ${clientId} connected from ${clientIp}. Total: ${clients.size}`);
@@ -60,6 +61,14 @@ wss.on('connection', (ws, req) => {
                 }
             } else if (data.type === 'ping') {
                 ws.send(JSON.stringify({ type: 'pong', timestamp: new Date().toISOString() }));
+            } else if (data.type === 'clear_session') {
+                // Client requested to clear stale data - set ignore window
+                const client = clients.get(clientId);
+                if (client) {
+                    client.ignoreUntil = Date.now() + 10000;  // Ignore alerts for next 10 seconds
+                    console.log(`Client ${clientId} requested clear_session - ignoring alerts for 10s`);
+                    ws.send(JSON.stringify({ type: 'session_cleared', timestamp: new Date().toISOString() }));
+                }
             }
         } catch (e) {
             // Ignore invalid messages
@@ -95,6 +104,12 @@ app.post('/alert', (req, res) => {
     });
 
     clients.forEach((client, clientId) => {
+        // Skip if client is in ignore window (stale data protection)
+        if (client.ignoreUntil && Date.now() < client.ignoreUntil) {
+            console.log(`Skipping alert for client ${clientId} - in ignore window`);
+            return;
+        }
+
         // Optional: filter by symbol
         if (client.symbol && alert.symbol && client.symbol !== alert.symbol) {
             return; // Skip if client subscribed to different symbol
