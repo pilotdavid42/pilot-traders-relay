@@ -43,7 +43,7 @@ wss.on('connection', (ws, req) => {
         symbol: null,
         webhookId: null,        // V1.1.43: User's unique webhook ID
         isLegacy: false,        // V1.1.43: True for admin accounts
-        ignoreUntil: Date.now() + 5000
+        ignoreUntil: Date.now() + 2000  // V1.1.93: Reduced from 5s to 2s to avoid swallowing first STATE_SYNC
     };
 
     clients.set(clientId, clientObj);
@@ -112,10 +112,12 @@ wss.on('connection', (ws, req) => {
                 ws.send(JSON.stringify({ type: 'pong', timestamp: new Date().toISOString() }));
             } else if (data.type === 'clear_session') {
                 // Client requested to clear stale data
+                // V1.1.93: Reduced from 10s to 3s - shorter window prevents swallowing
+                // the first STATE_SYNC after login, which is critical for populating fresh data
                 const client = clients.get(clientId);
                 if (client) {
-                    client.ignoreUntil = Date.now() + 10000;
-                    console.log(`Client ${clientId} requested clear_session - ignoring alerts for 10s`);
+                    client.ignoreUntil = Date.now() + 3000;
+                    console.log(`Client ${clientId} requested clear_session - ignoring alerts for 3s`);
                     ws.send(JSON.stringify({ type: 'session_cleared', timestamp: new Date().toISOString() }));
                 }
             }
